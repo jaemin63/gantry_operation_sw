@@ -23,6 +23,7 @@ const MonitorPage: React.FC = () => {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [frontendPollingInterval, setFrontendPollingInterval] = useState<number>(1000);
 
   // Load data points and polling status
   const loadData = useCallback(async () => {
@@ -66,15 +67,15 @@ const MonitorPage: React.FC = () => {
     }
   }, [dataPoints, loadCachedData]);
 
-  // Auto-refresh data when polling is active
+  // Auto-refresh data when polling is active (프론트엔드 폴링 주기)
   useEffect(() => {
     if (pollingStatus.isPolling) {
       const interval = setInterval(() => {
         loadCachedData();
-      }, Math.max(pollingStatus.intervalMs, 1000));
+      }, frontendPollingInterval);
       return () => clearInterval(interval);
     }
-  }, [pollingStatus.isPolling, pollingStatus.intervalMs, loadCachedData]);
+  }, [pollingStatus.isPolling, frontendPollingInterval, loadCachedData]);
 
   const handleStartPolling = async () => {
     try {
@@ -96,13 +97,44 @@ const MonitorPage: React.FC = () => {
     }
   };
 
-  const handleSetInterval = async (intervalMs: number) => {
+  const handleSetBackendInterval = async (intervalMs: number) => {
     try {
       await setPollingInterval(intervalMs);
       await loadData();
-      setMessage({ type: 'success', text: `Polling interval set to ${intervalMs}ms` });
+      setMessage({ type: 'success', text: `Backend polling interval set to ${intervalMs}ms` });
     } catch (error: any) {
-      setMessage({ type: 'error', text: 'Failed to set polling interval' });
+      setMessage({ type: 'error', text: 'Failed to set backend polling interval' });
+    }
+  };
+
+  const handleSetFrontendInterval = (intervalMs: number) => {
+    setFrontendPollingInterval(intervalMs);
+    setMessage({ type: 'success', text: `Frontend polling interval set to ${intervalMs}ms` });
+  };
+
+  const handleTestIncrement = async () => {
+    try {
+      const testPoint = dataPoints.find(p => p.key.toLowerCase() === 'test');
+      if (!testPoint) {
+        setMessage({ type: 'error', text: 'TEST data point not found. Please register a data point with key "test"' });
+        return;
+      }
+
+      const cachedData = dataCache['test'];
+      let currentValue = 0;
+
+      if (cachedData && Array.isArray(cachedData.value) && cachedData.value.length > 0) {
+        currentValue = cachedData.value[0];
+      }
+
+      const newValue = currentValue + 1;
+      await writeData('test', [newValue]);
+      setMessage({ type: 'success', text: `TEST incremented to ${newValue}` });
+
+      // 즉시 데이터 다시 로드
+      setTimeout(() => loadCachedData(), 200);
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.response?.data?.message || 'Failed to increment TEST' });
     }
   };
 
@@ -203,7 +235,8 @@ const MonitorPage: React.FC = () => {
           <span className={`status-indicator ${pollingStatus.isPolling ? 'active' : 'inactive'}`}>
             {pollingStatus.isPolling ? '● Polling Active' : '○ Polling Inactive'}
           </span>
-          <span>Interval: {pollingStatus.intervalMs}ms</span>
+          <span>Backend: {pollingStatus.intervalMs}ms</span>
+          <span>Frontend: {frontendPollingInterval}ms</span>
           <span>Data Points: {dataPoints.length}</span>
         </div>
 
@@ -222,19 +255,48 @@ const MonitorPage: React.FC = () => {
           >
             Stop Polling
           </button>
+          <button onClick={handleTestIncrement} className="control-btn test-btn">
+            TEST +1
+          </button>
+          <button onClick={loadCachedData} className="control-btn refresh-btn">
+            Refresh Data
+          </button>
+        </div>
+      </div>
+
+      {/* Backend Polling Interval */}
+      <div className="interval-controls">
+        <div className="interval-group">
+          <label>Backend Polling Interval:</label>
           <select
-            onChange={(e) => handleSetInterval(parseInt(e.target.value))}
+            onChange={(e) => handleSetBackendInterval(parseInt(e.target.value))}
             value={pollingStatus.intervalMs}
             className="interval-select"
           >
+            <option value={100}>100ms (Very Fast)</option>
+            <option value={200}>200ms</option>
             <option value={500}>500ms</option>
             <option value={1000}>1s</option>
             <option value={2000}>2s</option>
             <option value={5000}>5s</option>
           </select>
-          <button onClick={loadCachedData} className="control-btn refresh-btn">
-            Refresh Data
-          </button>
+        </div>
+
+        <div className="interval-group">
+          <label>Frontend Polling Interval:</label>
+          <select
+            onChange={(e) => handleSetFrontendInterval(parseInt(e.target.value))}
+            value={frontendPollingInterval}
+            className="interval-select"
+          >
+            <option value={100}>100ms (Very Fast)</option>
+            <option value={200}>200ms</option>
+            <option value={500}>500ms</option>
+            <option value={1000}>1s</option>
+            <option value={2000}>2s</option>
+            <option value={3000}>3s</option>
+            <option value={5000}>5s</option>
+          </select>
         </div>
       </div>
 

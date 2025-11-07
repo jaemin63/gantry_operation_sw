@@ -111,8 +111,8 @@ export class PlcController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '폴링 시작', description: '등록된 데이터 포인트에 대한 주기적 폴링을 시작합니다.' })
   @ApiResponse({ status: 200, description: '폴링 시작 성공' })
-  startPolling(): { message: string } {
-    this.plcService.startPolling();
+  async startPolling(): Promise<{ message: string }> {
+    await this.plcService.startPolling();
     return { message: 'Polling started' };
   }
 

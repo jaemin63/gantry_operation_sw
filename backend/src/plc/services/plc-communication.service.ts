@@ -19,61 +19,221 @@ export interface PlcConfig {
 /**
  * PLC 통신 전용 서비스
  * Mitsubishi MC Protocol 3E Binary 통신만 담당
+ * 영구 연결 방식으로 PLC와 단일 세션 유지
  */
 @Injectable()
 export class PlcCommunicationService {
   private readonly logger = new Logger(PlcCommunicationService.name);
+  private socket: net.Socket | null = null;
+  private isConnecting = false;
+  private isConnected = false;
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 3;
+  private pendingRequests: Array<{
+    frame: Buffer;
+    resolve: (data: Buffer) => void;
+    reject: (error: Error) => void;
+  }> = [];
+  private currentRequest: {
+    resolve: (data: Buffer) => void;
+    reject: (error: Error) => void;
+    timer: NodeJS.Timeout | null;
+  } | null = null;
+  private responseBuffer = Buffer.alloc(0);
+  private expectedLength = -1;
 
   constructor(private readonly config: PlcConfig) {}
 
-  private sendRecv(
-    frame: Buffer,
-    idleMs = 30,
-    timeoutMs = 5000,
-  ): Promise<Buffer> {
+  /**
+   * PLC 연결 설정
+   */
+  async connect(): Promise<void> {
+    if (this.isConnected) {
+      return;
+    }
+
+    if (this.isConnecting) {
+      // 연결 시도 중이면 대기
+      await new Promise<void>((resolve, reject) => {
+        const checkInterval = setInterval(() => {
+          if (this.isConnected) {
+            clearInterval(checkInterval);
+            resolve();
+          } else if (!this.isConnecting) {
+            clearInterval(checkInterval);
+            reject(new Error('Connection failed'));
+          }
+        }, 100);
+      });
+      return;
+    }
+
+    this.isConnecting = true;
+
     return new Promise((resolve, reject) => {
-      const s = new net.Socket();
-      s.setNoDelay(true);
-      s.setTimeout(timeoutMs);
+      this.socket = new net.Socket();
+      this.socket.setNoDelay(true);
+      this.socket.setTimeout(5000);
 
-      let acc = Buffer.alloc(0);
-      let need = -1;
-      let idle: NodeJS.Timeout | null = null;
+      this.socket.on('connect', () => {
+        this.isConnected = true;
+        this.isConnecting = false;
+        this.reconnectAttempts = 0;
+        this.logger.log(`Connected to PLC at ${this.config.host}:${this.config.port}`);
+        resolve();
+      });
 
-      const done = (err?: Error, data?: Buffer) => {
-        try {
-          s.destroy();
-        } catch {}
-        if (idle) clearTimeout(idle);
-        err ? reject(err) : resolve(data!);
-      };
+      this.socket.on('data', (chunk) => {
+        this.handleData(chunk);
+      });
 
-      const arm = () => {
-        if (idle) clearTimeout(idle);
-        idle = setTimeout(() => done(undefined, acc), idleMs);
-      };
-
-      s.once('error', (e) => done(e));
-      s.on('timeout', () => done(new Error('socket timeout')));
-      s.on('data', (chunk) => {
-        acc = Buffer.concat([acc, chunk]);
-        if (need < 0 && acc.length >= HEADER_LEN_3E) {
-          need = HEADER_LEN_3E + acc.readUInt16LE(7);
+      this.socket.on('error', (error) => {
+        this.logger.error('Socket error:', error.message);
+        if (this.isConnecting) {
+          this.isConnecting = false;
+          reject(error);
         }
-        if (need > 0 && acc.length >= need) {
-          return done(undefined, acc.subarray(0, need));
-        }
-        arm();
-      });
-      s.on('close', () => {
-        if (acc.length) done(undefined, acc);
-        else done(new Error('socket closed without data'));
+        this.handleDisconnect();
       });
 
-      s.connect(this.config.port, this.config.host, () => {
-        s.write(frame);
-        arm();
+      this.socket.on('close', () => {
+        this.logger.warn('Socket closed');
+        this.handleDisconnect();
       });
+
+      this.socket.on('timeout', () => {
+        this.logger.warn('Socket timeout');
+        this.socket?.destroy();
+        this.handleDisconnect();
+      });
+
+      this.socket.connect(this.config.port, this.config.host);
+    });
+  }
+
+  /**
+   * PLC 연결 해제
+   */
+  async disconnect(): Promise<void> {
+    if (this.socket) {
+      this.socket.removeAllListeners();
+      this.socket.destroy();
+      this.socket = null;
+    }
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.pendingRequests = [];
+    this.currentRequest = null;
+    this.responseBuffer = Buffer.alloc(0);
+    this.expectedLength = -1;
+    this.logger.log('Disconnected from PLC');
+  }
+
+  /**
+   * 연결 상태 확인
+   */
+  isConnectionActive(): boolean {
+    return this.isConnected;
+  }
+
+  /**
+   * 데이터 수신 처리
+   */
+  private handleData(chunk: Buffer): void {
+    this.responseBuffer = Buffer.concat([this.responseBuffer, chunk]);
+
+    // 헤더 파싱
+    if (this.expectedLength < 0 && this.responseBuffer.length >= HEADER_LEN_3E) {
+      this.expectedLength = HEADER_LEN_3E + this.responseBuffer.readUInt16LE(7);
+    }
+
+    // 전체 응답 수신 완료
+    if (this.expectedLength > 0 && this.responseBuffer.length >= this.expectedLength) {
+      const response = this.responseBuffer.subarray(0, this.expectedLength);
+      this.responseBuffer = this.responseBuffer.subarray(this.expectedLength);
+      this.expectedLength = -1;
+
+      if (this.currentRequest) {
+        if (this.currentRequest.timer) {
+          clearTimeout(this.currentRequest.timer);
+        }
+        this.currentRequest.resolve(response);
+        this.currentRequest = null;
+      }
+
+      // 다음 요청 처리
+      this.processNextRequest();
+    }
+  }
+
+  /**
+   * 연결 끊김 처리
+   */
+  private handleDisconnect(): void {
+    this.isConnected = false;
+
+    // 현재 요청 실패 처리
+    if (this.currentRequest) {
+      if (this.currentRequest.timer) {
+        clearTimeout(this.currentRequest.timer);
+      }
+      this.currentRequest.reject(new Error('Connection lost'));
+      this.currentRequest = null;
+    }
+
+    // 대기 중인 요청들 실패 처리
+    while (this.pendingRequests.length > 0) {
+      const req = this.pendingRequests.shift();
+      if (req) {
+        req.reject(new Error('Connection lost'));
+      }
+    }
+  }
+
+  /**
+   * 다음 요청 처리
+   */
+  private processNextRequest(): void {
+    if (this.currentRequest || this.pendingRequests.length === 0) {
+      return;
+    }
+
+    const request = this.pendingRequests.shift();
+    if (!request || !this.socket || !this.isConnected) {
+      return;
+    }
+
+    this.currentRequest = {
+      resolve: request.resolve,
+      reject: request.reject,
+      timer: setTimeout(() => {
+        if (this.currentRequest) {
+          this.currentRequest.reject(new Error('Request timeout'));
+          this.currentRequest = null;
+          this.processNextRequest();
+        }
+      }, 5000),
+    };
+
+    this.socket.write(request.frame);
+  }
+
+  /**
+   * 프레임 송수신 (영구 연결 사용)
+   */
+  private async sendRecv(frame: Buffer): Promise<Buffer> {
+    // 연결 확인 및 자동 재연결
+    if (!this.isConnected) {
+      try {
+        await this.connect();
+      } catch (error) {
+        throw new Error(`Failed to connect to PLC: ${error.message}`);
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      this.pendingRequests.push({ frame, resolve, reject });
+      this.processNextRequest();
     });
   }
 

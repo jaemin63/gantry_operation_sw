@@ -1,8 +1,8 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy, BadRequestException } from '@nestjs/common';
-import { PlcCommunicationService, DeviceCode } from './plc-communication.service';
-import { PlcDbService } from './plc-db.service';
-import { DataPoint } from '../entities/data-point.entity';
-import { PlcCache } from '../entities/plc-cache.entity';
+import { Injectable, Logger, OnModuleInit, OnModuleDestroy, BadRequestException } from "@nestjs/common";
+import { PlcCommunicationService, DeviceCode } from "./plc-communication.service";
+import { PlcDbService } from "./plc-db.service";
+import { DataPoint } from "../entities/data-point.entity";
+import { PlcCache } from "../entities/plc-cache.entity";
 
 /**
  * PLC 비즈니스 로직 서비스
@@ -16,7 +16,7 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly communication: PlcCommunicationService,
-    private readonly db: PlcDbService,
+    private readonly db: PlcDbService
   ) {}
 
   /**
@@ -24,11 +24,11 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
    */
   private getDeviceCode(addressType: string): DeviceCode {
     const map: Record<string, DeviceCode> = {
-      'D': DeviceCode.D,
-      'R': DeviceCode.R,
-      'M': DeviceCode.M,
-      'X': DeviceCode.X,
-      'Y': DeviceCode.Y,
+      D: DeviceCode.D,
+      R: DeviceCode.R,
+      M: DeviceCode.M,
+      X: DeviceCode.X,
+      Y: DeviceCode.Y,
     };
     const code = map[addressType.toUpperCase()];
     if (!code) {
@@ -37,13 +37,22 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
     return code;
   }
 
-  onModuleInit() {
-    this.logger.log('PLC Service initialized');
+  async onModuleInit() {
+    this.logger.log("PLC Service initialized");
+    // 서비스 시작 시 PLC 연결
+    try {
+      await this.communication.connect();
+      this.logger.log("PLC connection established on module init");
+    } catch (error) {
+      this.logger.error("Failed to connect to PLC on module init", error.stack);
+    }
   }
 
-  onModuleDestroy() {
+  async onModuleDestroy() {
     this.stopPolling();
-    this.logger.log('PLC Service destroyed');
+    // 서비스 종료 시 PLC 연결 해제
+    await this.communication.disconnect();
+    this.logger.log("PLC Service destroyed");
   }
 
   // ==================== 데이터 포인트 관리 ====================
@@ -85,10 +94,21 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  startPolling(): void {
+  async startPolling(): Promise<void> {
     if (this.pollingInterval) {
-      this.logger.warn('Polling already running');
+      this.logger.warn("Polling already running");
       return;
+    }
+
+    // 폴링 시작 전 연결 확인
+    if (!this.communication.isConnectionActive()) {
+      try {
+        await this.communication.connect();
+        this.logger.log("PLC connection established for polling");
+      } catch (error) {
+        this.logger.error("Failed to connect to PLC for polling", error.stack);
+        throw error;
+      }
     }
 
     this.logger.log(`Starting polling with interval: ${this.intervalMs}ms`);
@@ -98,7 +118,7 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
 
     // 즉시 한 번 실행
     this.poll().catch((err) => {
-      this.logger.error('Initial poll failed', err.stack);
+      this.logger.error("Initial poll failed", err.stack);
     });
   }
 
@@ -106,7 +126,7 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
-      this.logger.log('Polling stopped');
+      this.logger.log("Polling stopped");
     }
   }
 
@@ -127,28 +147,16 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
         let value: number[] | string | boolean;
         const deviceCode = this.getDeviceCode(dataPoint.addressType);
 
-        if (dataPoint.type === 'number') {
-          value = await this.communication.readNumbers(
-            deviceCode,
-            dataPoint.address,
-            dataPoint.length,
-          );
-        } else if (dataPoint.type === 'string') {
-          value = await this.communication.readString(
-            deviceCode,
-            dataPoint.address,
-            'ascii',
-            dataPoint.length,
-          );
-        } else if (dataPoint.type === 'bool') {
+        if (dataPoint.type === "number") {
+          value = await this.communication.readNumbers(deviceCode, dataPoint.address, dataPoint.length);
+          // write 하는 로직이 시간 오래 걸릴듯, read만 했을 때, 얼마나 빨리 읽어오는지 확인 필요
+        } else if (dataPoint.type === "string") {
+          value = await this.communication.readString(deviceCode, dataPoint.address, "ascii", dataPoint.length);
+        } else if (dataPoint.type === "bool") {
           if (dataPoint.bit === undefined || dataPoint.bit === null) {
             throw new BadRequestException(`Bit position is required for bool type: ${dataPoint.key}`);
           }
-          value = await this.communication.readBit(
-            deviceCode,
-            dataPoint.address,
-            dataPoint.bit,
-          );
+          value = await this.communication.readBit(deviceCode, dataPoint.address, dataPoint.bit);
         } else {
           throw new BadRequestException(`Unknown type: ${dataPoint.type}`);
         }
@@ -166,7 +174,7 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
         // 에러 정보 저장
         await this.db.saveCache({
           key: dataPoint.key,
-          value: dataPoint.type === 'number' ? [] : dataPoint.type === 'bool' ? false : '',
+          value: dataPoint.type === "number" ? [] : dataPoint.type === "bool" ? false : "",
           timestamp: new Date(),
           error: error.message,
         });
@@ -198,28 +206,15 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
 
     const deviceCode = this.getDeviceCode(definition.addressType);
 
-    if (definition.type === 'number') {
-      return this.communication.readNumbers(
-        deviceCode,
-        definition.address,
-        definition.length,
-      );
-    } else if (definition.type === 'string') {
-      return this.communication.readString(
-        deviceCode,
-        definition.address,
-        'ascii',
-        definition.length,
-      );
-    } else if (definition.type === 'bool') {
+    if (definition.type === "number") {
+      return this.communication.readNumbers(deviceCode, definition.address, definition.length);
+    } else if (definition.type === "string") {
+      return this.communication.readString(deviceCode, definition.address, "ascii", definition.length);
+    } else if (definition.type === "bool") {
       if (definition.bit === undefined || definition.bit === null) {
         throw new BadRequestException(`Bit position is required for bool type: ${key}`);
       }
-      return this.communication.readBit(
-        deviceCode,
-        definition.address,
-        definition.bit,
-      );
+      return this.communication.readBit(deviceCode, definition.address, definition.bit);
     } else {
       throw new BadRequestException(`Unknown type: ${definition.type}`);
     }
@@ -233,25 +228,15 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
 
     const deviceCode = this.getDeviceCode(definition.addressType);
 
-    if (definition.type === 'number' && Array.isArray(value)) {
+    if (definition.type === "number" && Array.isArray(value)) {
       await this.communication.writeNumbers(deviceCode, definition.address, value);
-    } else if (definition.type === 'string' && typeof value === 'string') {
-      await this.communication.writeString(
-        deviceCode,
-        definition.address,
-        value,
-        'ascii',
-      );
-    } else if (definition.type === 'bool' && typeof value === 'boolean') {
+    } else if (definition.type === "string" && typeof value === "string") {
+      await this.communication.writeString(deviceCode, definition.address, value, "ascii");
+    } else if (definition.type === "bool" && typeof value === "boolean") {
       if (definition.bit === undefined || definition.bit === null) {
         throw new BadRequestException(`Bit position is required for bool type: ${key}`);
       }
-      await this.communication.writeBit(
-        deviceCode,
-        definition.address,
-        definition.bit,
-        value,
-      );
+      await this.communication.writeBit(deviceCode, definition.address, definition.bit, value);
     } else {
       throw new BadRequestException(`Type mismatch for data point '${key}'`);
     }
@@ -267,6 +252,6 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
 
   async clearCache(): Promise<void> {
     await this.db.clearAllCache();
-    this.logger.log('Cache cleared');
+    this.logger.log("Cache cleared");
   }
 }
