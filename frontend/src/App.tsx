@@ -1,8 +1,9 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import RegisterPage from './pages/RegisterPage';
-import MonitorPage from './pages/MonitorPage';
-import './App.css';
+// src/App.tsx
+import React from "react";
+import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-dom";
+import RegisterPage from "./pages/RegisterPage";
+import MonitorPage from "./pages/MonitorPage";
+import "./App.css";
 
 function App() {
   return (
@@ -13,14 +14,14 @@ function App() {
             <h2 className="nav-logo">PLC Monitor</h2>
             <ul className="nav-menu">
               <li className="nav-item">
-                <Link to="/" className="nav-link">
+                <NavLink to="/" end className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
                   Monitor
-                </Link>
+                </NavLink>
               </li>
               <li className="nav-item">
-                <Link to="/register" className="nav-link">
+                <NavLink to="/register" className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
                   Register Data Point
-                </Link>
+                </NavLink>
               </li>
             </ul>
           </div>

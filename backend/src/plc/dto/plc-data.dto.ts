@@ -1,58 +1,95 @@
-import { IsString, IsNumber, IsArray, IsEnum, IsOptional, IsBoolean } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DeviceCode } from '../services/plc-communication.service';
+import { IsString, IsNumber, IsArray, IsBoolean, IsOptional, IsIn } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { PlcValue } from "../plc.types";
+
+// ========== 데이터 포인트 등록 DTO ==========
 
 export class RegisterDataPointDto {
-  @ApiProperty({
-    description: '등록할 데이터 포인트 키',
-    example: 'sensor_values'
-  })
+  @ApiProperty({ description: "데이터 포인트 키", example: "custom_sensor" })
   @IsString()
   key: string;
+
+  @ApiProperty({ description: "설명", example: "사용자 정의 센서" })
+  @IsString()
+  description: string;
+
+  @ApiProperty({
+    description: "주소 타입 (D, R, M, X, Y)",
+    example: "D",
+  })
+  @IsString()
+  @IsIn(["D", "R", "M", "X", "Y"])
+  addressType: string;
+
+  @ApiProperty({ description: "시작 주소", example: 2000 })
+  @IsNumber()
+  address: number;
+
+  @ApiProperty({
+    description: "number: 워드 수, string: 문자 수",
+    example: 5,
+  })
+  @IsNumber()
+  length: number;
+
+  @ApiPropertyOptional({
+    description: "비트 위치 (0-15) – bool 타입에만 사용",
+    example: 0,
+  })
+  @IsOptional()
+  @IsNumber()
+  bit?: number;
+
+  @ApiProperty({
+    description: "데이터 타입",
+    example: "number",
+    enum: ["number", "string", "bool"],
+  })
+  @IsString()
+  @IsIn(["number", "string", "bool"])
+  type: "number" | "string" | "bool";
+
+  @ApiProperty({
+    description: "폴링 주기(ms)",
+    example: 1000,
+    default: 1000,
+  })
+  @IsOptional()
+  @IsNumber()
+  pollingInterval?: number;
 }
 
-export class DataPointKeyDto {
-  @ApiProperty({
-    description: '조회할 데이터 포인트 키',
-    example: 'sensor_values'
-  })
-  @IsString()
-  key: string;
-}
+// ========== 쓰기 DTO ==========
 
 export class WriteNumbersDto {
-  @ApiProperty({ description: '쓸 숫자 배열', example: [100, 200, 300] })
+  @ApiProperty({ description: "쓸 숫자 배열", example: [100, 200, 300] })
   @IsArray()
   @IsNumber({}, { each: true })
   values: number[];
 }
 
 export class WriteStringDto {
-  @ApiProperty({ description: '쓸 문자열', example: 'HELLO' })
+  @ApiProperty({ description: "쓸 문자열", example: "HELLO" })
   @IsString()
   value: string;
 }
 
 export class WriteBoolDto {
-  @ApiProperty({ description: '쓸 불린 값', example: true })
+  @ApiProperty({ description: "쓸 불린 값", example: true })
   @IsBoolean()
   value: boolean;
 }
 
-export class SetPollingIntervalDto {
-  @ApiProperty({ description: '폴링 간격 (밀리초)', example: 1000 })
-  @IsNumber()
-  intervalMs: number;
-}
+// ========== 응답 DTO ==========
 
 export class PlcDataResponseDto {
-  @ApiProperty({ description: '읽은 데이터 값 (숫자 배열, 문자열, 또는 불린)' })
-  value: number[] | string | boolean;
+  @ApiProperty({ description: "읽은 값" })
+  value: PlcValue;
 
-  @ApiProperty({ description: '데이터 읽은 시간' })
+  @ApiProperty({ description: "데이터 읽은 시간" })
   timestamp: Date;
 
-  @ApiPropertyOptional({ description: '에러 메시지 (에러 발생시)' })
+  @ApiPropertyOptional({ description: "에러 메시지 (있을 경우)" })
   error?: string;
 }
 
@@ -61,35 +98,42 @@ export class PlcCacheResponseDto {
 }
 
 export class PollingStatusDto {
-  @ApiProperty({ description: '폴링 실행 중 여부', example: true })
+  @ApiProperty({ description: "폴링 실행 중 여부", example: true })
   isPolling: boolean;
 
-  @ApiProperty({ description: '현재 폴링 간격 (밀리초)', example: 1000 })
+  @ApiProperty({ description: "현재 폴링 간격 (밀리초)", example: 1000 })
   intervalMs: number;
 
-  @ApiProperty({ description: '등록된 데이터 포인트 키 목록', example: ['sensor_values', 'device_name'] })
+  @ApiProperty({
+    description: "등록된 데이터 포인트 키 목록",
+    example: ["sensor_values", "device_name"],
+  })
   registeredDataPoints: string[];
 }
 
+// Response DTO는 엔티티와 거의 동일하니 그대로 둬도 무방
 export class DataPointInfoDto {
-  @ApiProperty({ description: '데이터 포인트 키' })
+  @ApiProperty({ description: "데이터 포인트 키" })
   key: string;
 
-  @ApiProperty({ description: '설명' })
+  @ApiProperty({ description: "설명" })
   description: string;
 
-  @ApiProperty({ description: '주소 타입 (D, R, M, X, Y)' })
+  @ApiProperty({ description: "주소 타입 (D, R, M, X, Y)" })
   addressType: string;
 
-  @ApiProperty({ description: '시작 주소' })
+  @ApiProperty({ description: "시작 주소" })
   address: number;
 
-  @ApiProperty({ description: 'number 타입: 워드 수, string 타입: 문자 수' })
+  @ApiProperty({ description: "number: 워드 수, string: 문자 수" })
   length: number;
 
-  @ApiPropertyOptional({ description: '비트 위치 (0-15, bool 타입 전용)' })
+  @ApiPropertyOptional({ description: "비트 위치 (0-15, bool 타입 전용)" })
   bit?: number;
 
-  @ApiProperty({ description: '데이터 타입 (number, string, bool)' })
+  @ApiProperty({ description: "데이터 타입 (number, string, bool)" })
   type: string;
+
+  @ApiProperty({ description: "폴링 주기(ms)", example: 1000 })
+  pollingInterval: number;
 }

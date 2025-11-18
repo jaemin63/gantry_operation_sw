@@ -38,8 +38,13 @@ export const stopPolling = async (): Promise<void> => {
   await api.post('/plc/polling/stop');
 };
 
-export const setPollingInterval = async (intervalMs: number): Promise<void> => {
-  await api.post('/plc/polling/interval', { intervalMs });
+export const getPollingMetrics = async (): Promise<{
+  readCount: number;
+  readsPerSecond: number;
+  elapsedSeconds: number;
+}> => {
+  const response = await api.get('/plc/polling/metrics');
+  return response.data;
 };
 
 // Data APIs

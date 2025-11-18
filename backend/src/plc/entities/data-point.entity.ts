@@ -22,4 +22,7 @@ export class DataPoint {
 
   @Column()
   type: 'number' | 'string' | 'bool';
+
+  @Column({ type: 'int', default: 1000 })
+  pollingInterval: number; // 폴링 주기 (ms), 기본값 1000ms
 }

@@ -3,76 +3,73 @@ import { PlcCommunicationService, DeviceCode } from "./plc-communication.service
 import { PlcDbService } from "./plc-db.service";
 import { DataPoint } from "../entities/data-point.entity";
 import { PlcCache } from "../entities/plc-cache.entity";
+import { RegisterDataPointDto } from "../dto/plc-data.dto";
+import { PlcValue } from "../plc.types";
 
 /**
  * PLC 비즈니스 로직 서비스
- * 폴링, 데이터 포인트 관리, 읽기/쓰기 등 비즈니스 로직 담당
+ * - 각 데이터 포인트가 자신의 폴링 주기에 따라 독립적으로 폴링
  */
 @Injectable()
 export class PlcService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PlcService.name);
-  private pollingInterval: NodeJS.Timeout | null = null;
-  private intervalMs = 1000; // 기본 1초 폴링
+
+  // 개별 데이터 포인트 폴링 타이머들
+  private pollingTimers: Map<string, NodeJS.Timeout> = new Map();
+  private isPollingActive = false;
+
+  // 폴링 성능 메트릭
+  private readCount = 0;
+  private pollingStartTime: Date | null = null;
 
   constructor(
     private readonly communication: PlcCommunicationService,
     private readonly db: PlcDbService
   ) {}
 
-  /**
-   * addressType 문자를 DeviceCode로 변환
-   */
-  private getDeviceCode(addressType: string): DeviceCode {
-    const map: Record<string, DeviceCode> = {
-      D: DeviceCode.D,
-      R: DeviceCode.R,
-      M: DeviceCode.M,
-      X: DeviceCode.X,
-      Y: DeviceCode.Y,
-    };
-    const code = map[addressType.toUpperCase()];
-    if (!code) {
-      throw new BadRequestException(`Invalid address type: ${addressType}. Must be one of: D, R, M, X, Y`);
-    }
-    return code;
-  }
-
   async onModuleInit() {
     this.logger.log("PLC Service initialized");
-    // 서비스 시작 시 PLC 연결
     try {
       await this.communication.connect();
-      this.logger.log("PLC connection established on module init");
+      this.logger.log("PLC connection established");
     } catch (error) {
-      this.logger.error("Failed to connect to PLC on module init", error.stack);
+      this.logger.error("Failed to connect to PLC", error.stack);
     }
   }
 
   async onModuleDestroy() {
     this.stopPolling();
-    // 서비스 종료 시 PLC 연결 해제
     await this.communication.disconnect();
     this.logger.log("PLC Service destroyed");
   }
 
   // ==================== 데이터 포인트 관리 ====================
-  async registerDataPoint(dataPoint: DataPoint): Promise<DataPoint> {
-    const existing = await this.db.findDataPoint(dataPoint.key);
 
-    if (existing) {
-      // 업데이트
-      await this.db.createDataPoint(dataPoint);
-      this.logger.log(`Updated data point: ${dataPoint.key}`);
-    } else {
-      // 새로 생성
-      await this.db.createDataPoint(dataPoint);
-      this.logger.log(`Registered data point: ${dataPoint.key}`);
+  async registerDataPoint(dto: RegisterDataPointDto): Promise<DataPoint> {
+    const dataPoint = new DataPoint();
+    dataPoint.key = dto.key;
+    dataPoint.description = dto.description;
+    dataPoint.addressType = dto.addressType;
+    dataPoint.address = dto.address;
+    dataPoint.length = dto.length;
+    dataPoint.bit = dto.bit;
+    dataPoint.type = dto.type;
+    dataPoint.pollingInterval = dto.pollingInterval ?? 1000;
+
+    const saved = await this.db.createDataPoint(dataPoint);
+    this.logger.log(`Registered data point: ${saved.key} (${saved.pollingInterval}ms)`);
+
+    // 폴링 중이면 바로 시작
+    if (this.isPollingActive) {
+      this.startPollingForDataPoint(saved);
     }
 
-    return this.db.findDataPoint(dataPoint.key)!;
+    return saved;
   }
 
   async unregisterDataPoint(key: string): Promise<void> {
+    // 해당 데이터 포인트의 폴링 중지
+    this.stopPollingForDataPoint(key);
     await this.db.deleteDataPoint(key);
     this.logger.log(`Unregistered data point: ${key}`);
   }
@@ -86,172 +83,242 @@ export class PlcService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ==================== 폴링 제어 ====================
-  setPollingInterval(ms: number): void {
-    this.intervalMs = ms;
-    if (this.pollingInterval) {
-      this.stopPolling();
-      this.startPolling();
-    }
-  }
 
   async startPolling(): Promise<void> {
-    if (this.pollingInterval) {
-      this.logger.warn("Polling already running");
+    if (this.isPollingActive) {
+      this.logger.warn("Polling already active");
       return;
     }
 
-    // 폴링 시작 전 연결 확인
+    // PLC 연결 확인
     if (!this.communication.isConnectionActive()) {
-      try {
-        await this.communication.connect();
-        this.logger.log("PLC connection established for polling");
-      } catch (error) {
-        this.logger.error("Failed to connect to PLC for polling", error.stack);
-        throw error;
-      }
+      await this.communication.connect();
     }
 
-    this.logger.log(`Starting polling with interval: ${this.intervalMs}ms`);
-    this.pollingInterval = setInterval(async () => {
-      await this.poll();
-    }, this.intervalMs);
+    this.isPollingActive = true;
+    this.readCount = 0;
+    this.pollingStartTime = new Date();
 
-    // 즉시 한 번 실행
-    this.poll().catch((err) => {
-      this.logger.error("Initial poll failed", err.stack);
-    });
+    this.logger.log("Starting polling for all data points");
+
+    // 모든 데이터 포인트의 폴링 시작
+    const dataPoints = await this.db.findAllDataPoints();
+    for (const dataPoint of dataPoints) {
+      this.startPollingForDataPoint(dataPoint);
+    }
   }
 
   stopPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-      this.logger.log("Polling stopped");
+    if (!this.isPollingActive) {
+      return;
     }
+
+    this.isPollingActive = false;
+    this.readCount = 0;
+    this.pollingStartTime = null;
+
+    this.logger.log("Stopping all polling");
+
+    // 모든 타이머 중지
+    for (const [key, timer] of this.pollingTimers) {
+      clearInterval(timer);
+    }
+    this.pollingTimers.clear();
   }
 
   isPolling(): boolean {
-    return this.pollingInterval !== null;
+    return this.isPollingActive;
   }
 
-  getIntervalMs(): number {
-    return this.intervalMs;
+  /**
+   * 개별 데이터 포인트 폴링 시작
+   */
+  private startPollingForDataPoint(dataPoint: DataPoint): void {
+    this.stopPollingForDataPoint(dataPoint.key);
+
+    this.logger.log(`Start polling: ${dataPoint.key} every ${dataPoint.pollingInterval}ms`);
+
+    const timer = setInterval(() => {
+      this.pollDataPoint(dataPoint).catch((err) => {
+        this.logger.error(`Unhandled error while polling ${dataPoint.key}`, err.stack);
+      });
+    }, dataPoint.pollingInterval);
+
+    this.pollingTimers.set(dataPoint.key, timer);
+
+    // 즉시 한 번 실행
+    this.pollDataPoint(dataPoint).catch((err) => {
+      this.logger.error(`Initial poll failed for ${dataPoint.key}`, err.stack);
+    });
   }
 
-  // ==================== 폴링 로직 ====================
-  private async poll(): Promise<void> {
-    const dataPoints = await this.db.findAllDataPoints();
+  /**
+   * 개별 데이터 포인트 폴링 중지
+   */
+  private stopPollingForDataPoint(key: string): void {
+    const timer = this.pollingTimers.get(key);
+    if (timer) {
+      clearInterval(timer);
+      this.pollingTimers.delete(key);
+      this.logger.log(`Stopped polling: ${key}`);
+    }
+  }
 
-    const promises = dataPoints.map(async (dataPoint) => {
-      try {
-        let value: number[] | string | boolean;
-        const deviceCode = this.getDeviceCode(dataPoint.addressType);
+  /**
+   * 단일 데이터 포인트 읽기 및 캐시 저장
+   */
+  private async pollDataPoint(dataPoint: DataPoint): Promise<void> {
+    try {
+      const deviceCode = this.getDeviceCode(dataPoint.addressType);
+      let value: PlcValue;
 
-        if (dataPoint.type === "number") {
+      switch (dataPoint.type) {
+        case "number":
           value = await this.communication.readNumbers(deviceCode, dataPoint.address, dataPoint.length);
-          // write 하는 로직이 시간 오래 걸릴듯, read만 했을 때, 얼마나 빨리 읽어오는지 확인 필요
-        } else if (dataPoint.type === "string") {
+          break;
+        case "string":
           value = await this.communication.readString(deviceCode, dataPoint.address, "ascii", dataPoint.length);
-        } else if (dataPoint.type === "bool") {
+          break;
+        case "bool":
           if (dataPoint.bit === undefined || dataPoint.bit === null) {
-            throw new BadRequestException(`Bit position is required for bool type: ${dataPoint.key}`);
+            throw new BadRequestException(`Bit position required for ${dataPoint.key}`);
           }
           value = await this.communication.readBit(deviceCode, dataPoint.address, dataPoint.bit);
-        } else {
+          break;
+        default:
           throw new BadRequestException(`Unknown type: ${dataPoint.type}`);
-        }
-
-        // DB에 저장
-        await this.db.saveCache({
-          key: dataPoint.key,
-          value,
-          timestamp: new Date(),
-          error: undefined,
-        });
-      } catch (error) {
-        this.logger.error(`Failed to poll ${dataPoint.key}`, error.stack);
-
-        // 에러 정보 저장
-        await this.db.saveCache({
-          key: dataPoint.key,
-          value: dataPoint.type === "number" ? [] : dataPoint.type === "bool" ? false : "",
-          timestamp: new Date(),
-          error: error.message,
-        });
       }
-    });
 
-    await Promise.allSettled(promises);
+      this.readCount++;
+
+      await this.db.saveCache({
+        key: dataPoint.key,
+        value,
+        timestamp: new Date(),
+        error: undefined,
+      });
+    } catch (error) {
+      this.logger.error(`Failed to poll ${dataPoint.key}`, error.stack);
+
+      await this.db.saveCache({
+        key: dataPoint.key,
+        value: this.getEmptyValueForType(dataPoint.type),
+        timestamp: new Date(),
+        error: (error as Error).message,
+      });
+    }
+  }
+
+  private getEmptyValueForType(type: DataPoint["type"]): PlcValue {
+    switch (type) {
+      case "number":
+        return [];
+      case "bool":
+        return false;
+      case "string":
+      default:
+        return "";
+    }
   }
 
   // ==================== 데이터 읽기/쓰기 ====================
+
   async getCacheItem(key: string): Promise<PlcCache | null> {
     return this.db.findCache(key);
   }
 
-  async getCache(): Promise<Record<string, PlcCache>> {
-    const items = await this.db.findAllCache();
-    const result: Record<string, PlcCache> = {};
-    items.forEach((item) => {
-      result[item.key] = item;
-    });
-    return result;
-  }
-
-  async readOnce(key: string): Promise<number[] | string | boolean> {
-    const definition = await this.db.findDataPoint(key);
-    if (!definition) {
-      throw new BadRequestException(`Data point '${key}' not found`);
+  async writeData(key: string, value: PlcValue): Promise<void> {
+    // 1. 데이터 포인트 정의 조회
+    const dataPoint = await this.db.findDataPoint(key);
+    if (!dataPoint) {
+      throw new BadRequestException(`Data point not found: ${key}`);
     }
 
-    const deviceCode = this.getDeviceCode(definition.addressType);
+    const { type, address, bit, addressType } = dataPoint;
+    const deviceCode = this.getDeviceCode(addressType);
 
-    if (definition.type === "number") {
-      return this.communication.readNumbers(deviceCode, definition.address, definition.length);
-    } else if (definition.type === "string") {
-      return this.communication.readString(deviceCode, definition.address, "ascii", definition.length);
-    } else if (definition.type === "bool") {
-      if (definition.bit === undefined || definition.bit === null) {
-        throw new BadRequestException(`Bit position is required for bool type: ${key}`);
+    // 2. 타입별로 값 검증 + PLC 쓰기
+    switch (type) {
+      case "number": {
+        if (!Array.isArray(value)) {
+          throw new BadRequestException(`Value must be number array for ${key}`);
+        }
+
+        // 필요하면 length 검사도 여기서 가능 (옵션)
+        // if (value.length !== dataPoint.length) { ... }
+
+        await this.communication.writeNumbers(deviceCode, address, value);
+        break;
       }
-      return this.communication.readBit(deviceCode, definition.address, definition.bit);
-    } else {
-      throw new BadRequestException(`Unknown type: ${definition.type}`);
-    }
-  }
 
-  async writeValue(key: string, value: number[] | string | boolean): Promise<void> {
-    const definition = await this.db.findDataPoint(key);
-    if (!definition) {
-      throw new BadRequestException(`Data point '${key}' not found`);
-    }
+      case "string": {
+        if (typeof value !== "string") {
+          throw new BadRequestException(`Value must be string for ${key}`);
+        }
 
-    const deviceCode = this.getDeviceCode(definition.addressType);
-
-    if (definition.type === "number" && Array.isArray(value)) {
-      await this.communication.writeNumbers(deviceCode, definition.address, value);
-    } else if (definition.type === "string" && typeof value === "string") {
-      await this.communication.writeString(deviceCode, definition.address, value, "ascii");
-    } else if (definition.type === "bool" && typeof value === "boolean") {
-      if (definition.bit === undefined || definition.bit === null) {
-        throw new BadRequestException(`Bit position is required for bool type: ${key}`);
+        await this.communication.writeString(deviceCode, address, value, "ascii");
+        break;
       }
-      await this.communication.writeBit(deviceCode, definition.address, definition.bit, value);
-    } else {
-      throw new BadRequestException(`Type mismatch for data point '${key}'`);
+
+      case "bool": {
+        if (typeof value !== "boolean") {
+          throw new BadRequestException(`Value must be boolean for ${key}`);
+        }
+        if (bit === undefined || bit === null) {
+          throw new BadRequestException(`Bit position required for ${key}`);
+        }
+
+        await this.communication.writeBit(deviceCode, address, bit, value);
+        break;
+      }
+
+      default:
+        throw new BadRequestException(`Unknown data point type: ${type}`);
     }
 
-    // 쓰기 성공 후 캐시 업데이트
+    // 3. 캐시 업데이트
     await this.db.saveCache({
       key,
       value,
       timestamp: new Date(),
       error: undefined,
     });
+
+    this.logger.log(`Wrote PLC data for key='${key}' (type=${type}, address=${address}${type === "bool" ? `.${bit}` : ""})`);
   }
 
-  async clearCache(): Promise<void> {
-    await this.db.clearAllCache();
-    this.logger.log("Cache cleared");
+  // ==================== 성능 메트릭 ====================
+
+  getPollingMetrics(): { readCount: number; readsPerSecond: number; elapsedSeconds: number } {
+    if (!this.isPollingActive || !this.pollingStartTime) {
+      return { readCount: 0, readsPerSecond: 0, elapsedSeconds: 0 };
+    }
+
+    const elapsedMs = Date.now() - this.pollingStartTime.getTime();
+    const elapsedSeconds = Math.floor(elapsedMs / 1000);
+    const readsPerSecond = elapsedSeconds > 0 ? Math.floor(this.readCount / elapsedSeconds) : 0;
+
+    return {
+      readCount: this.readCount,
+      readsPerSecond,
+      elapsedSeconds,
+    };
+  }
+
+  // ==================== 유틸리티 ====================
+
+  private getDeviceCode(addressType: string): DeviceCode {
+    const map: Record<string, DeviceCode> = {
+      D: DeviceCode.D,
+      R: DeviceCode.R,
+      M: DeviceCode.M,
+      X: DeviceCode.X,
+      Y: DeviceCode.Y,
+    };
+    const code = map[addressType.toUpperCase()];
+    if (!code) {
+      throw new BadRequestException(`Invalid address type: ${addressType}`);
+    }
+    return code;
   }
 }

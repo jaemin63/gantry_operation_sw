@@ -6,6 +6,7 @@ export interface DataPoint {
   length: number;
   bit?: number;
   type: 'number' | 'string' | 'bool';
+  pollingInterval: number; // 폴링 주기 (ms)
 }
 
 export interface PlcDataResponse {
@@ -16,6 +17,5 @@ export interface PlcDataResponse {
 
 export interface PollingStatus {
   isPolling: boolean;
-  intervalMs: number;
-  registeredDataPoints: string[];
+  dataPointCount: number;
 }

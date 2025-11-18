@@ -3,6 +3,7 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { DataPoint } from "../entities/data-point.entity";
 import { PlcCache } from "../entities/plc-cache.entity";
+import { PlcValue } from "../plc.types";
 
 /**
  * DB 접근 전용 서비스
@@ -35,7 +36,7 @@ export class PlcDbService {
   }
 
   // ==================== PlcCache CRUD ====================
-  async saveCache(cache: { key: string; value: number[] | string | boolean; timestamp: Date; error?: string }): Promise<PlcCache> {
+  async saveCache(cache: { key: string; value: PlcValue; timestamp: Date; error?: string }): Promise<PlcCache> {
     return this.cacheRepo.save(cache);
   }
 
