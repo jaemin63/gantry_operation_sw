@@ -1,91 +1,87 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f5f5f5;
-}
-
-.App {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Navigation Bar */
+/* 상단 바 */
 .navbar {
-  background-color: #2c3e50;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.nav-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 20px;
+  width: 100%;
+  height: 50px;
+  background-color: #222;
+  color: #fff;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  height: 60px;
+  padding: 0 15px;
+  box-sizing: border-box;
+  position: relative; /* 중요 */
+  z-index: 2000;     /* 사이드바보다 높게 */
 }
 
 .nav-logo {
-  color: white;
+  margin-left: 10px;
+}
+
+/* 메뉴 버튼 */
+.menu-btn {
   font-size: 24px;
-  font-weight: 700;
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: #fff;
+  z-index: 2100;      /* 사이드바보다 높게 */
 }
 
-.nav-menu {
-  display: flex;
-  list-style: none;
-  gap: 30px;
+/* Sidebar */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: -250px;
+  width: 250px;
+  height: 100%;
+  background-color: #333;
+  color: #fff;
+  transition: left 0.3s ease;
+  z-index: 1000; /* 상단 바보다 낮게 */
+  padding-top: 60px;
 }
 
-.nav-item {
-  position: relative;
+.sidebar.open {
+  left: 0;
 }
 
-.nav-link {
-  color: white;
+.sidebar .close-sidebar {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  font-size: 30px;
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+}
+
+.sidebar ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.sidebar ul li {
+  padding: 15px 20px;
+}
+
+.sidebar ul li a {
+  color: #fff;
   text-decoration: none;
-  font-size: 16px;
-  font-weight: 500;
-  padding: 8px 16px;
-  border-radius: 4px;
-  transition: background-color 0.3s;
-  display: block;
 }
 
-.nav-link:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+.sidebar ul li a:hover {
+  background-color: #444;
 }
 
-.nav-link.active {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-/* Main Content */
+/* main content */
 .main-content {
-  flex: 1;
-  padding: 20px 0;
+  padding: 15px;
+  margin-left: 0;
 }
 
-/* Responsive */
-@media (max-width: 768px) {
-  .nav-container {
-    flex-direction: column;
-    height: auto;
-    padding: 15px 20px;
-  }
-
-  .nav-menu {
-    margin-top: 15px;
-    gap: 15px;
-  }
+.nav-logo-img {
+  height: 30px;
+  margin-left: 20px;  /* 햄버거 버튼과 간격 */
+  margin-right: 20px;
+  vertical-align: middle;
 }
