@@ -2,6 +2,7 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-dom";
 import DataSetPage from "./pages/DataSetPage";
+import DataSetCachePage from "./pages/DataSetCachePage";
 import TagPage from "./pages/TagPage";
 import TagMonitorPage from "./pages/TagMonitorPage";
 import ProcessDemoPage from "./pages/ProcessDemoPage";
@@ -27,6 +28,11 @@ function App() {
                 </NavLink>
               </li>
               <li className="nav-item">
+                <NavLink to="/datasets-cache" className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
+                  DataSet Cache
+                </NavLink>
+              </li>
+              <li className="nav-item">
                 <NavLink to="/tags" className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
                   Tags
                 </NavLink>
@@ -49,6 +55,7 @@ function App() {
           <Routes>
             <Route path="/" element={<TagMonitorPage />} />
             <Route path="/datasets" element={<DataSetPage />} />
+            <Route path="/datasets-cache" element={<DataSetCachePage />} />
             <Route path="/tags" element={<TagPage />} />
             <Route path="/process-demo" element={<ProcessDemoPage />} />
             <Route path="/hardware-demo" element={<HardwareProfileDemoPage />} />

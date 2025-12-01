@@ -10,6 +10,14 @@ export interface DataSet {
   enabled: boolean;
 }
 
+export interface DataSetValues {
+  dataSetId: number;
+  length: number;
+  values: number[];
+  timestamp?: Date | string;
+  error?: string;
+}
+
 export interface Tag {
   key: string;
   description: string;

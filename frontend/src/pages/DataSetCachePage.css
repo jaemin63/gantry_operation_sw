@@ -1,0 +1,168 @@
+.dataset-cache-page {
+  padding: 24px;
+}
+
+.dsp-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.dsp-subtitle {
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.dsp-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.dsp-poll-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dsp-poll-controls input {
+  width: 90px;
+  margin-left: 4px;
+}
+
+.dsp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.dsp-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.dsp-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.muted {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.badge {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.badge-yes {
+  background: #ecfdf3;
+  color: #16a34a;
+}
+
+.badge-no {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.dsp-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.label {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.text-error {
+  color: #dc2626;
+}
+
+.text-ok {
+  color: #16a34a;
+}
+
+.dsp-values {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: "Fira Code", "Menlo", monospace;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.dsp-meta strong {
+  white-space: nowrap;
+}
+
+.values-preview {
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.dsp-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn {
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #111827;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn.primary {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+
+.btn.secondary {
+  background: #f3f4f6;
+}
+
+.btn.ghost {
+  background: transparent;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toast {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.toast.success {
+  background: #ecfdf3;
+  color: #15803d;
+}
+
+.toast.error {
+  background: #fef2f2;
+  color: #b91c1c;
+}

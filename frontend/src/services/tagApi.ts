@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DataSet, Tag, TagValue, TagPollingStatus } from '../types';
+import { DataSet, DataSetValues, Tag, TagValue, TagPollingStatus } from '../types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
@@ -33,6 +33,16 @@ export const updateDataSet = async (id: number, updates: Partial<DataSet>): Prom
 
 export const deleteDataSet = async (id: number): Promise<void> => {
   await api.delete(`/plc/data-sets/${id}`);
+};
+
+// DataSet values (bulk)
+export const getDataSetValues = async (): Promise<DataSetValues[]> => {
+  const response = await api.get('/plc/data-sets/values');
+  return response.data;
+};
+
+export const writeDataSetValues = async (dataSetId: number, values: number[]): Promise<void> => {
+  await api.post('/plc/data-sets/values', { dataSetId, values });
 };
 
 // ==================== Tag APIs ====================
@@ -79,6 +89,14 @@ export const startTagPolling = async (): Promise<void> => {
 
 export const stopTagPolling = async (): Promise<void> => {
   await api.post('/plc/tags/polling/stop');
+};
+
+export const startDataSetPolling = async (): Promise<void> => {
+  await api.post('/plc/data-sets/polling/start');
+};
+
+export const stopDataSetPolling = async (): Promise<void> => {
+  await api.post('/plc/data-sets/polling/stop');
 };
 
 export const getTagPollingStatus = async (): Promise<TagPollingStatus> => {
