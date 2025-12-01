@@ -1,15 +1,26 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { getDataSets, getDataSetValues, startDataSetPolling, stopDataSetPolling, writeDataSetValues } from "../services/tagApi";
-import { DataSet, DataSetValues } from "../types";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  getDataSets,
+  getDataSetValues,
+  startDataSetPolling,
+  stopDataSetPolling,
+  writeDataSetValues,
+  getTags,
+  writeTagValue,
+} from "../services/tagApi";
+import { DataSet, DataSetValues, Tag } from "../types";
 import "./DataSetCachePage.css";
 
 const DataSetCachePage: React.FC = () => {
   const [dataSets, setDataSets] = useState<DataSet[]>([]);
   const [values, setValues] = useState<DataSetValues[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pollInterval, setPollInterval] = useState<number>(1000);
   const [isPolling, setIsPolling] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>("");
 
   const loadDataSets = useCallback(async () => {
     try {
@@ -35,6 +46,14 @@ const DataSetCachePage: React.FC = () => {
   useEffect(() => {
     loadDataSets();
     loadValues(true);
+    (async () => {
+      try {
+        const t = await getTags();
+        setTags(t);
+      } catch (error) {
+        console.error("Failed to load tags", error);
+      }
+    })();
   }, [loadDataSets, loadValues]);
 
   useEffect(() => {
@@ -77,17 +96,113 @@ const DataSetCachePage: React.FC = () => {
     }
   };
 
-  const renderValuesPreview = (val: number[]) => {
-    if (!val || val.length === 0) return "-";
-    const slice = val.slice(0, 10).join(", ");
-    return val.length > 10 ? `${slice} ... (${val.length} words)` : slice;
-  };
-
   const formatTimestamp = (ts?: Date | string) => {
     if (!ts) return "-";
     const d = new Date(ts);
     const base = d.toLocaleTimeString([], { hour12: false });
     return `${base}.${String(d.getMilliseconds()).padStart(3, "0")}`;
+  };
+
+  const tagsByDataSet = useMemo(() => {
+    const map: Record<number, Tag[]> = {};
+    for (const t of tags) {
+      if (!map[t.dataSetId]) map[t.dataSetId] = [];
+      map[t.dataSetId].push(t);
+    }
+    // optional: sort by offset then bit
+    Object.values(map).forEach((arr) => arr.sort((a, b) => a.offset - b.offset || (a.bitPosition ?? 0) - (b.bitPosition ?? 0)));
+    return map;
+  }, [tags]);
+
+  const renderTagValue = (tag: Tag, dsValues?: number[]) => {
+    if (!dsValues || dsValues.length === 0) return "-";
+    const { offset, dataType, wordLength = 1, bitPosition = 0 } = tag;
+    const safe = (idx: number) => (idx >= 0 && idx < dsValues.length ? dsValues[idx] : undefined);
+
+    try {
+      switch (dataType) {
+        case "int16": {
+          const w = safe(offset);
+          if (w === undefined) return "N/A";
+          return w > 32767 ? w - 65536 : w;
+        }
+        case "int32": {
+          const lo = safe(offset);
+          const hi = safe(offset + 1);
+          if (lo === undefined || hi === undefined) return "N/A";
+          let val = (hi << 16) | lo;
+          if (val > 2147483647) val -= 4294967296;
+          return val;
+        }
+        case "real": {
+          const lo = safe(offset);
+          const hi = safe(offset + 1);
+          if (lo === undefined || hi === undefined) return "N/A";
+          const buf = new ArrayBuffer(4);
+          const view = new DataView(buf);
+          view.setUint16(0, lo, true); // little-endian
+          view.setUint16(2, hi, true);
+          return Number(view.getFloat32(0, true).toFixed(4));
+        }
+        case "bool": {
+          const w = safe(offset);
+          if (w === undefined) return "N/A";
+          return ((w >> bitPosition) & 1) === 1 ? "ON" : "OFF";
+        }
+        case "string": {
+          const words = [];
+          for (let i = 0; i < wordLength; i++) {
+            const w = safe(offset + i);
+            if (w === undefined) break;
+            words.push(w);
+          }
+          if (!words.length) return "N/A";
+          const bytes: number[] = [];
+          for (const w of words) {
+            const lo = w & 0xff;
+            const hi = (w >> 8) & 0xff;
+            if (lo === 0) break;
+            bytes.push(lo);
+            if (hi === 0) break;
+            bytes.push(hi);
+          }
+          const decoder = new TextDecoder("ascii");
+          return decoder.decode(new Uint8Array(bytes));
+        }
+        default:
+          return "N/A";
+      }
+    } catch (err) {
+      return "ERR";
+    }
+  };
+
+  const startEditTag = (tag: Tag, dsValues?: number[]) => {
+    const current = renderTagValue(tag, dsValues);
+    setEditingKey(tag.key);
+    setEditValue(current === "N/A" || current === "ERR" ? "" : String(current));
+  };
+
+  const writeTag = async (tag: Tag) => {
+    try {
+      let value: number | string | boolean;
+      if (tag.dataType === "int16" || tag.dataType === "int32" || tag.dataType === "real") {
+        value = parseFloat(editValue);
+        if (isNaN(value)) throw new Error("Invalid number");
+      } else if (tag.dataType === "bool") {
+        value = editValue.toLowerCase() === "true" || editValue === "1" || editValue.toLowerCase() === "on";
+      } else {
+        value = editValue;
+      }
+      await writeTagValue(tag.key, value);
+      setMessage({ type: "success", text: `Written ${tag.key}` });
+      setEditingKey(null);
+      setEditValue("");
+      await loadValues(true);
+    } catch (error) {
+      console.error("Failed to write tag", error);
+      setMessage({ type: "error", text: `Failed to write ${tag.key}` });
+    }
   };
 
   return (
@@ -125,6 +240,7 @@ const DataSetCachePage: React.FC = () => {
       <section className="dsp-grid">
         {dataSets.map((ds) => {
           const val = values.find((v) => v.dataSetId === ds.id);
+          const tagList = tagsByDataSet[ds.id] || [];
           return (
             <div key={ds.id} className="dsp-card">
               <div className="dsp-card-header">
@@ -150,17 +266,51 @@ const DataSetCachePage: React.FC = () => {
                   <strong className={val?.error ? "text-error" : "text-ok"}>{val?.error || "OK"}</strong>
                 </div>
               </div>
-              <div className="dsp-values">
-                <div className="label">Values (preview)</div>
-                <div className="values-preview">{renderValuesPreview(val?.values || [])}</div>
-              </div>
-              <div className="dsp-footer">
-                <button className="btn secondary" onClick={() => handleWriteValues(ds, val)}>
-                  Write Current Values
-                </button>
-                <button className="btn ghost" onClick={() => val && alert(JSON.stringify(val.values, null, 2))} disabled={!val}>
-                  Show Full JSON
-                </button>
+              <div className="dsp-tags">
+                <div className="dsp-tags-header">
+                  <span className="label">Tags</span>
+                  <span className="label">{tagList.length} items</span>
+                </div>
+                <div className="dsp-tags-table">
+                  {tagList.map((t) => (
+                    <div className="dsp-tag-row" key={t.key}>
+                      <div className="dsp-tag-key">{t.key}</div>
+                      <div className="dsp-tag-meta">
+                        <span>{t.dataType}</span>
+                        <span>
+                          {ds.addressType}
+                          {ds.startAddress + t.offset}
+                          {t.dataType === "bool" && t.bitPosition !== undefined ? `.${t.bitPosition}` : ""}
+                        </span>
+                      </div>
+                      <div className="dsp-tag-actions">
+                        {editingKey === t.key ? (
+                          <>
+                            <input
+                              className="tag-input"
+                              value={editValue}
+                              onChange={(e) => setEditValue(e.target.value)}
+                              placeholder="value"
+                            />
+                            <button className="btn primary small" onClick={() => writeTag(t)}>
+                              Write
+                            </button>
+                            <button className="btn ghost small" onClick={() => setEditingKey(null)}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="dsp-tag-value">{renderTagValue(t, val?.values)}</span>
+                            <button className="btn secondary small" onClick={() => startEditTag(t, val?.values)}>
+                              Write
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           );

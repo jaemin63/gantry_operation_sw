@@ -35,16 +35,16 @@
 
 .dsp-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 20px;
 }
 
 .dsp-card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
 }
 
 .dsp-card-header {
@@ -96,14 +96,77 @@
   color: #16a34a;
 }
 
-.dsp-values {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+.dsp-tags {
+  margin-top: 10px;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
-  padding: 10px;
-  font-family: "Fira Code", "Menlo", monospace;
+  background: #fff;
+}
+
+.dsp-tags-header {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.dsp-tags-table {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.dsp-tag-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.3fr;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
   font-size: 13px;
+}
+
+.dsp-tag-row:last-child {
+  border-bottom: none;
+}
+
+.dsp-tag-key {
+  font-weight: 600;
+  color: #111827;
+  word-break: break-all;
+}
+
+.dsp-tag-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #6b7280;
+}
+
+.dsp-tag-meta span:last-child {
+  color: #374151;
+  font-weight: 500;
+}
+
+.dsp-tag-value {
+  font-family: "Fira Code", "Menlo", monospace;
   color: #0f172a;
+  text-align: right;
+  word-break: keep-all;
+}
+
+.dsp-tag-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tag-input {
+  width: 90px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
 }
 
 .dsp-meta strong {
