@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { DataSet, DataSetValues, Tag, TagValue, TagPollingStatus } from '../types';
+import { DataSet, DataSetValues, Tag } from '../types';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
@@ -70,25 +70,8 @@ export const deleteTag = async (key: string): Promise<void> => {
   await api.delete(`/plc/tags/${key}`);
 };
 
-// ==================== Tag Value APIs (핵심!) ====================
-
-export const getTagValue = async (key: string): Promise<TagValue> => {
-  const response = await api.get(`/plc/tags/${key}/value`);
-  return response.data;
-};
-
 export const writeTagValue = async (key: string, value: number | string | boolean): Promise<void> => {
   await api.post(`/plc/tags/${key}/value`, { value });
-};
-
-// ==================== Tag Polling APIs ====================
-
-export const startTagPolling = async (): Promise<void> => {
-  await api.post('/plc/tags/polling/start');
-};
-
-export const stopTagPolling = async (): Promise<void> => {
-  await api.post('/plc/tags/polling/stop');
 };
 
 export const startDataSetPolling = async (): Promise<void> => {
@@ -97,18 +80,4 @@ export const startDataSetPolling = async (): Promise<void> => {
 
 export const stopDataSetPolling = async (): Promise<void> => {
   await api.post('/plc/data-sets/polling/stop');
-};
-
-export const getTagPollingStatus = async (): Promise<TagPollingStatus> => {
-  const response = await api.get('/plc/tags/polling/status');
-  return response.data;
-};
-
-export const getTagPollingMetrics = async (): Promise<{
-  readCount: number;
-  readsPerSecond: number;
-  elapsedSeconds: number;
-}> => {
-  const response = await api.get('/plc/tags/polling/metrics');
-  return response.data;
 };

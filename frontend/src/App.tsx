@@ -4,7 +4,6 @@ import { BrowserRouter as Router, Routes, Route, NavLink } from "react-router-do
 import DataSetPage from "./pages/DataSetPage";
 import DataSetCachePage from "./pages/DataSetCachePage";
 import TagPage from "./pages/TagPage";
-import TagMonitorPage from "./pages/TagMonitorPage";
 import ProcessDemoPage from "./pages/ProcessDemoPage";
 import HardwareProfileDemoPage from "./pages/HardwareProfileDemoPage";
 import "./App.css";
@@ -19,17 +18,12 @@ function App() {
             <ul className="nav-menu">
               <li className="nav-item">
                 <NavLink to="/" end className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
-                  Monitor
+                  DataSet Cache
                 </NavLink>
               </li>
               <li className="nav-item">
                 <NavLink to="/datasets" className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
                   DataSets
-                </NavLink>
-              </li>
-              <li className="nav-item">
-                <NavLink to="/datasets-cache" className={({ isActive }) => "nav-link" + (isActive ? " nav-link-active" : "")}>
-                  DataSet Cache
                 </NavLink>
               </li>
               <li className="nav-item">
@@ -53,9 +47,8 @@ function App() {
 
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<TagMonitorPage />} />
+            <Route path="/" element={<DataSetCachePage />} />
             <Route path="/datasets" element={<DataSetPage />} />
-            <Route path="/datasets-cache" element={<DataSetCachePage />} />
             <Route path="/tags" element={<TagPage />} />
             <Route path="/process-demo" element={<ProcessDemoPage />} />
             <Route path="/hardware-demo" element={<HardwareProfileDemoPage />} />

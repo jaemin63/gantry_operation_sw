@@ -34,12 +34,6 @@ export interface TagValue {
   error?: string;
 }
 
-export interface TagPollingStatus {
-  isPolling: boolean;
-  dataSetCount: number;
-  tagCount: number;
-}
-
 // Process / Function / Hardware profiles
 export interface ProcessFunctionArg {
   id: number;

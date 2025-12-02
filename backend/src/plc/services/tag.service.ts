@@ -18,7 +18,6 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
   // DataSet별 원본 데이터 캐시 (메모리)
   private dataSetCache: Map<number, number[]> = new Map();
   private isPollingActive = false;
-  private tagListCache: Map<number, Tag[]> = new Map();
   private dataSetCacheMeta: Map<number, { timestamp: Date; error?: string }> = new Map();
 
   // 성능 메트릭
@@ -128,10 +127,9 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * DataSet 전체를 한 번에 읽고, 각 Tag별로 캐시 저장
+   * DataSet 전체를 한 번에 읽고, 벌크 캐시로 저장
    */
   private async pollDataSet(dataSet: DataSet): Promise<void> {
-    const cachePayload: Array<{ key: string; value: PlcValue; timestamp: Date; error?: string }> = [];
     let rawData: number[] = [];
     try {
       const deviceCode = this.getDeviceCode(dataSet.addressType);
@@ -143,29 +141,6 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
       this.dataSetCache.set(dataSet.id, rawData);
       this.dataSetCacheMeta.set(dataSet.id, { timestamp: new Date(), error: undefined });
 
-      // 각 Tag별로 값 추출 및 캐시 저장
-      const tags = await this.getTagsForDataSet(dataSet);
-      for (const tag of tags) {
-        try {
-          const value = this.extractTagValue(tag, rawData);
-          cachePayload.push({
-            key: tag.key,
-            value,
-            timestamp: new Date(),
-            error: undefined,
-          });
-        } catch (error) {
-          this.logger.error(`Failed to extract tag ${tag.key}`, (error as Error).stack);
-          cachePayload.push({
-            key: tag.key,
-            value: this.getEmptyValueForType(tag.dataType),
-            timestamp: new Date(),
-            error: (error as Error).message,
-          });
-        }
-      }
-
-      await this.db.saveTagCacheBulk(cachePayload);
       await this.db.upsertDataSetCache([
         {
           dataSetId: dataSet.id,
@@ -178,18 +153,6 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error(`Failed to poll DataSet ${dataSet.id}`, (error as Error).stack);
 
-      // 에러 발생 시 모든 Tag를 에러 상태로 저장
-      const tags = await this.getTagsForDataSet(dataSet);
-      for (const tag of tags) {
-        cachePayload.push({
-          key: tag.key,
-          value: this.getEmptyValueForType(tag.dataType),
-          timestamp: new Date(),
-          error: (error as Error).message,
-        });
-      }
-
-      await this.db.saveTagCacheBulk(cachePayload);
       this.dataSetCacheMeta.set(dataSet.id, { timestamp: new Date(), error: (error as Error).message });
       await this.db.upsertDataSetCache([
         {
@@ -201,16 +164,6 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
         },
       ]);
     }
-  }
-
-  private async getTagsForDataSet(dataSet: DataSet): Promise<Tag[]> {
-    const cached = this.tagListCache.get(dataSet.id);
-    if (cached && cached.length > 0) {
-      return cached;
-    }
-    const tags = dataSet.tags && dataSet.tags.length > 0 ? dataSet.tags : await this.db.findTagsByDataSet(dataSet.id);
-    this.tagListCache.set(dataSet.id, tags);
-    return tags;
   }
 
   getDataSetCacheSnapshot(): Array<{

@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBody } from "@nestjs/s
 import { PlcDbService } from "./services/plc-db.service";
 import { TagService } from "./services/tag.service";
 import { CreateDataSetDto, UpdateDataSetDto, DataSetResponseDto } from "./dto/data-set.dto";
-import { CreateTagDto, UpdateTagDto, TagResponseDto, TagValueResponseDto, WriteTagValueDto } from "./dto/tag.dto";
+import { CreateTagDto, UpdateTagDto, TagResponseDto, WriteTagValueDto } from "./dto/tag.dto";
 import { DataSetValuesResponseDto, WriteDataSetValuesDto } from "./dto/data-set-value.dto";
 import { DataSet } from "./entities/data-set.entity";
 import { Tag } from "./entities/tag.entity";
@@ -129,7 +129,7 @@ export class TagController {
     return { message: `Values written to DataSet ${dto.dataSetId}` };
   }
 
-  // ==================== Tag API ====================
+  // ==================== Tag API (CRUD + write only) ====================
 
   @Get("tags")
   @ApiTags("tags")
@@ -208,26 +208,6 @@ export class TagController {
     this.logger.log(`Deleted Tag: ${key}`);
   }
 
-  // ==================== Tag Value API (핵심!) ====================
-
-  @Get("tags/:key/value")
-  @ApiTags("tag-values")
-  @ApiOperation({ summary: "Tag 값 읽기 (캐시에서)" })
-  @ApiParam({ name: "key", description: "Tag key", example: "x_servo_position" })
-  @ApiResponse({ status: 200, type: TagValueResponseDto })
-  async getTagValue(@Param("key") key: string): Promise<TagValueResponseDto> {
-    const cache = await this.db.findTagCache(key);
-    if (!cache) {
-      throw new NotFoundException(`Tag value for '${key}' not found. Make sure polling is running.`);
-    }
-
-    return {
-      value: cache.value,
-      timestamp: cache.timestamp,
-      error: cache.error,
-    };
-  }
-
   @Post("tags/:key/value")
   @ApiTags("tag-values")
   @HttpCode(HttpStatus.OK)
@@ -238,28 +218,6 @@ export class TagController {
   async writeTagValue(@Param("key") key: string, @Body() dto: WriteTagValueDto): Promise<{ message: string }> {
     await this.tagService.writeTagValue(key, dto.value);
     return { message: `Value written to tag '${key}'` };
-  }
-
-  // ==================== Tag Polling Control ====================
-
-  @Post("tags/polling/start")
-  @ApiTags("tag-polling")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Tag 폴링 시작" })
-  @ApiResponse({ status: 200 })
-  async startTagPolling(): Promise<{ message: string }> {
-    await this.tagService.startPolling();
-    return { message: "Tag polling started" };
-  }
-
-  @Post("tags/polling/stop")
-  @ApiTags("tag-polling")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Tag 폴링 중지" })
-  @ApiResponse({ status: 200 })
-  stopTagPolling(): { message: string } {
-    this.tagService.stopPolling();
-    return { message: "Tag polling stopped" };
   }
 
   // ==================== DataSet Polling Control (동일 로직 라우팅) ====================
@@ -282,28 +240,6 @@ export class TagController {
   stopDataSetPolling(): { message: string } {
     this.tagService.stopPolling();
     return { message: "DataSet polling stopped" };
-  }
-
-  @Get("tags/polling/status")
-  @ApiTags("tag-polling")
-  @ApiOperation({ summary: "Tag 폴링 상태 조회" })
-  @ApiResponse({ status: 200 })
-  async getTagPollingStatus(): Promise<{ isPolling: boolean; dataSetCount: number; tagCount: number }> {
-    const dataSets = await this.db.findEnabledDataSets();
-    const tags = await this.db.findAllTags();
-    return {
-      isPolling: this.tagService.isPolling(),
-      dataSetCount: dataSets.length,
-      tagCount: tags.length,
-    };
-  }
-
-  @Get("tags/polling/metrics")
-  @ApiTags("tag-polling")
-  @ApiOperation({ summary: "Tag 폴링 성능 메트릭 조회" })
-  @ApiResponse({ status: 200 })
-  getTagPollingMetrics(): { readCount: number; readsPerSecond: number; elapsedSeconds: number } {
-    return this.tagService.getPollingMetrics();
   }
 
   // ==================== Utility ====================
