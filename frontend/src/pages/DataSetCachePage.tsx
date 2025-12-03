@@ -2,11 +2,12 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   getDataSets,
   getDataSetValues,
-  startDataSetPolling,
-  stopDataSetPolling,
+  startDataSetPollingById,
+  stopDataSetPollingById,
   writeDataSetValues,
   getTags,
   writeTagValue,
+  getDataSetPollingStatus,
 } from "../services/tagApi";
 import { DataSet, DataSetValues, Tag } from "../types";
 import "./DataSetCachePage.css";
@@ -17,10 +18,10 @@ const DataSetCachePage: React.FC = () => {
   const [tags, setTags] = useState<Tag[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [pollInterval, setPollInterval] = useState<number>(1000);
-  const [isPolling, setIsPolling] = useState<boolean>(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>("");
+  const [dsStatus, setDsStatus] = useState<Record<number, boolean>>({});
 
   const loadDataSets = useCallback(async () => {
     try {
@@ -50,37 +51,43 @@ const DataSetCachePage: React.FC = () => {
       try {
         const t = await getTags();
         setTags(t);
+        const st = await getDataSetPollingStatus();
+        const map: Record<number, boolean> = {};
+        st.forEach((s) => (map[s.dataSetId] = s.isRunning));
+        setDsStatus(map);
       } catch (error) {
         console.error("Failed to load tags", error);
       }
     })();
   }, [loadDataSets, loadValues]);
 
+  const anyPolling = useMemo(() => Object.values(dsStatus).some(Boolean), [dsStatus]);
+
   useEffect(() => {
-    if (!isPolling) return;
+    if (!anyPolling) return;
     const interval = setInterval(() => {
       loadValues(true);
     }, pollInterval);
     return () => clearInterval(interval);
-  }, [isPolling, pollInterval, loadValues]);
+  }, [anyPolling, pollInterval, loadValues]);
 
-  const handleStartPolling = async () => {
+  const handleStartSingle = async (dataSetId: number) => {
     try {
-      await startDataSetPolling();
-      setIsPolling(true);
-      setMessage({ type: "success", text: "DataSet polling started" });
+      await startDataSetPollingById(dataSetId);
+      setDsStatus((prev) => ({ ...prev, [dataSetId]: true }));
+      setMessage({ type: "success", text: `DataSet ${dataSetId} polling started` });
     } catch (error) {
-      setMessage({ type: "error", text: "Failed to start polling" });
+      setMessage({ type: "error", text: `Failed to start DataSet ${dataSetId}` });
     }
   };
 
-  const handleStopPolling = async () => {
+  const handleStopSingle = async (dataSetId: number) => {
     try {
-      await stopDataSetPolling();
-      setIsPolling(false);
-      setMessage({ type: "success", text: "DataSet polling stopped" });
+      await stopDataSetPollingById(dataSetId);
+      setDsStatus((prev) => ({ ...prev, [dataSetId]: false }));
+      setMessage({ type: "success", text: `DataSet ${dataSetId} polling stopped` });
     } catch (error) {
-      setMessage({ type: "error", text: "Failed to stop polling" });
+      setMessage({ type: "error", text: `Failed to stop DataSet ${dataSetId}` });
     }
   };
 
@@ -223,12 +230,6 @@ const DataSetCachePage: React.FC = () => {
                 onChange={(e) => setPollInterval(Number(e.target.value) || 1000)}
               />
             </label>
-            <button className="btn primary" onClick={handleStartPolling} disabled={isPolling}>
-              Start Polling
-            </button>
-            <button className="btn secondary" onClick={handleStopPolling} disabled={!isPolling}>
-              Stop Polling
-            </button>
             <button className="btn" onClick={() => loadValues(false)} disabled={isLoading}>
               Manual Refresh
             </button>
@@ -250,7 +251,15 @@ const DataSetCachePage: React.FC = () => {
                     {ds.addressType}{ds.startAddress} ~ {ds.addressType}{ds.startAddress + ds.length - 1} ({ds.length} words)
                   </p>
                 </div>
-                <span className={`badge ${ds.enabled ? "badge-yes" : "badge-no"}`}>{ds.enabled ? "ENABLED" : "DISABLED"}</span>
+                <div className="dsp-card-actions">
+                  <span className={`badge ${ds.enabled ? "badge-yes" : "badge-no"}`}>{ds.enabled ? "ENABLED" : "DISABLED"}</span>
+                  <button className="btn small primary" onClick={() => handleStartSingle(ds.id)} disabled={dsStatus[ds.id]}>
+                    Start
+                  </button>
+                  <button className="btn small secondary" onClick={() => handleStopSingle(ds.id)} disabled={!dsStatus[ds.id]}>
+                    Stop
+                  </button>
+                </div>
               </div>
               <div className="dsp-meta">
                 <div>

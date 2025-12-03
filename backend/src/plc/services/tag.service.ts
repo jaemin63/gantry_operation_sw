@@ -87,15 +87,49 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
     this.pollingTimers.clear();
     this.dataSetCache.clear();
     this.dataSetCacheMeta.clear();
-    this.dataSetCacheMeta.clear();
   }
 
   isPolling(): boolean {
     return this.isPollingActive;
   }
 
+  async startPollingForDataSetId(dataSetId: number): Promise<void> {
+    const ds = await this.db.findDataSet(dataSetId);
+    if (!ds) {
+      throw new NotFoundException(`DataSet ${dataSetId} not found`);
+    }
+    if (this.pollingTimers.has(dataSetId)) {
+      this.logger.warn(`DataSet ${dataSetId} polling already active`);
+      return;
+    }
+    this.startPollingForDataSet(ds);
+  }
+
+  stopPollingForDataSetId(dataSetId: number): void {
+    this.stopPollingForDataSet(dataSetId);
+  }
+
+  getDataSetPollingStatus(): Array<{ dataSetId: number; isRunning: boolean; timestamp?: Date; error?: string }> {
+    const out: Array<{ dataSetId: number; isRunning: boolean; timestamp?: Date; error?: string }> = [];
+    const allIds = new Set<number>([
+      ...this.dataSetCache.keys(),
+      ...this.pollingTimers.keys(),
+      ...this.dataSetCacheMeta.keys(),
+    ]);
+    for (const id of allIds) {
+      const meta = this.dataSetCacheMeta.get(id);
+      out.push({
+        dataSetId: id,
+        isRunning: this.pollingTimers.has(id),
+        timestamp: meta?.timestamp,
+        error: meta?.error,
+      });
+    }
+    return out;
+  }
+
   /**
-   * DataSet 폴링 시작
+   * DataSet 폴링 시작 (단일)
    */
   private startPollingForDataSet(dataSet: DataSet): void {
     this.stopPollingForDataSet(dataSet.id);

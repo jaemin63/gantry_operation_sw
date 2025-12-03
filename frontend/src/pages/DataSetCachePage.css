@@ -54,6 +54,12 @@
   gap: 8px;
 }
 
+.dsp-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
 .muted {
   color: #6b7280;
   font-size: 13px;
@@ -212,6 +218,11 @@
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn.small {
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .toast {

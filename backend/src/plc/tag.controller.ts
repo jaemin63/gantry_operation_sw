@@ -222,24 +222,34 @@ export class TagController {
 
   // ==================== DataSet Polling Control (동일 로직 라우팅) ====================
 
-  @Post("data-sets/polling/start")
+  @Post("data-sets/:id/polling/start")
   @ApiTags("data-sets")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "DataSet 폴링 시작" })
+  @ApiOperation({ summary: "특정 DataSet 폴링 시작" })
+  @ApiParam({ name: "id", description: "DataSet ID" })
   @ApiResponse({ status: 200 })
-  async startDataSetPolling(): Promise<{ message: string }> {
-    await this.tagService.startPolling();
-    return { message: "DataSet polling started" };
+  async startSingleDataSetPolling(@Param("id", ParseIntPipe) id: number): Promise<{ message: string }> {
+    await this.tagService.startPollingForDataSetId(id);
+    return { message: `DataSet ${id} polling started` };
   }
 
-  @Post("data-sets/polling/stop")
+  @Post("data-sets/:id/polling/stop")
   @ApiTags("data-sets")
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "DataSet 폴링 중지" })
+  @ApiOperation({ summary: "특정 DataSet 폴링 중지" })
+  @ApiParam({ name: "id", description: "DataSet ID" })
   @ApiResponse({ status: 200 })
-  stopDataSetPolling(): { message: string } {
-    this.tagService.stopPolling();
-    return { message: "DataSet polling stopped" };
+  stopSingleDataSetPolling(@Param("id", ParseIntPipe) id: number): { message: string } {
+    this.tagService.stopPollingForDataSetId(id);
+    return { message: `DataSet ${id} polling stopped` };
+  }
+
+  @Get("data-sets/polling/status")
+  @ApiTags("data-sets")
+  @ApiOperation({ summary: "DataSet 폴링 상태 조회" })
+  @ApiResponse({ status: 200 })
+  getDataSetPollingStatus(): Array<{ dataSetId: number; isRunning: boolean; timestamp?: Date; error?: string }> {
+    return this.tagService.getDataSetPollingStatus();
   }
 
   // ==================== Utility ====================

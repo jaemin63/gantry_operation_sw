@@ -74,10 +74,17 @@ export const writeTagValue = async (key: string, value: number | string | boolea
   await api.post(`/plc/tags/${key}/value`, { value });
 };
 
-export const startDataSetPolling = async (): Promise<void> => {
-  await api.post('/plc/data-sets/polling/start');
+export const startDataSetPollingById = async (id: number): Promise<void> => {
+  await api.post(`/plc/data-sets/${id}/polling/start`);
 };
 
-export const stopDataSetPolling = async (): Promise<void> => {
-  await api.post('/plc/data-sets/polling/stop');
+export const stopDataSetPollingById = async (id: number): Promise<void> => {
+  await api.post(`/plc/data-sets/${id}/polling/stop`);
+};
+
+export const getDataSetPollingStatus = async (): Promise<
+  Array<{ dataSetId: number; isRunning: boolean; timestamp?: Date; error?: string }>
+> => {
+  const response = await api.get('/plc/data-sets/polling/status');
+  return response.data;
 };
