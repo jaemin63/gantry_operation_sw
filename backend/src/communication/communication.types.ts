@@ -1,6 +1,7 @@
 export enum DeviceCode {
   D = 0xa8,
   R = 0xaf,
+  ZR = 0xb0,
   M = 0x90,
   X = 0x9c,
   Y = 0x9d,

@@ -2,13 +2,13 @@ import { IsString, IsNumber, IsBoolean, IsOptional, IsIn, Min } from "class-vali
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateDataSetDto {
-  @ApiProperty({ description: "DataSet 이름", example: "고속 센서 데이터" })
+  @ApiProperty({ description: "DataSet 이름", example: "고속 서보 데이터" })
   @IsString()
   name: string;
 
-  @ApiProperty({ description: "주소 타입 (D, R, M, X, Y)", example: "D" })
+  @ApiProperty({ description: "주소 타입(D, R, ZR, M, X, Y)", example: "D" })
   @IsString()
-  @IsIn(["D", "R", "M", "X", "Y"])
+  @IsIn(["D", "R", "ZR", "M", "X", "Y"])
   addressType: string;
 
   @ApiProperty({ description: "시작 주소", example: 1000 })

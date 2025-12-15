@@ -3,7 +3,7 @@
 export interface DataSet {
   id: number;
   name: string;
-  addressType: 'D' | 'R' | 'M' | 'X' | 'Y';
+  addressType: 'D' | 'R' | 'ZR' | 'M' | 'X' | 'Y';
   startAddress: number;
   length: number;
   pollingInterval: number;

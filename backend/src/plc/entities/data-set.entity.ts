@@ -13,8 +13,8 @@ export class DataSet {
   @Column({ unique: true })
   name: string; // "고속 센서 데이터", "저속 제어 데이터" 등
 
-  @Column({ length: 1 })
-  addressType: string; // D, R, M, X, Y
+  @Column({ length: 2, default: "D" })
+  addressType: string; // D, R, ZR, M, X, Y
 
   @Column()
   startAddress: number; // 시작 주소 (예: 1000)

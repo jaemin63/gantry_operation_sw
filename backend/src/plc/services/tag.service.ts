@@ -444,6 +444,7 @@ export class TagService implements OnModuleInit, OnModuleDestroy {
     const map: Record<string, DeviceCode> = {
       D: DeviceCode.D,
       R: DeviceCode.R,
+      ZR: DeviceCode.ZR,
       M: DeviceCode.M,
       X: DeviceCode.X,
       Y: DeviceCode.Y,

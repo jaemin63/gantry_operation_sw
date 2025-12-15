@@ -138,6 +138,10 @@ const DataSetPage: React.FC = () => {
                   >
                     <option value="D">D (Data Register)</option>
                     <option value="R">R (File Register)</option>
+                    <option value="ZR">ZR (Extended Register)</option>
+                    <option value="M">M (Internal Relay)</option>
+                    <option value="X">X (Input)</option>
+                    <option value="Y">Y (Output)</option>
                   </select>
                 </div>
               </div>
